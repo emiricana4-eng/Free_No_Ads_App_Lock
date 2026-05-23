@@ -94,26 +94,31 @@ class MainActivity : AppCompatActivity() {
         binding.tvOverlayBanner.visibility = if (hasOverlayPermission()) View.GONE else View.VISIBLE
     }
 
-    private fun loadInstalledApps() {
-        binding.progressBar.visibility = View.VISIBLE
-        binding.rvApps.visibility = View.GONE
-        Thread {
-            val pm = packageManager
-            val apps = pm.getInstalledApplications(0)
-                .filter { !isSystemApp(it) && it.packageName != packageName }
-                .map { AppInfo(it.packageName, pm.getApplicationLabel(it).toString(), pm.getApplicationIcon(it.packageName)) }
-                .sortedBy { it.name.lowercase() }
-            runOnUiThread {
-                adapter.setApps(apps)
-                binding.progressBar.visibility = View.GONE
-                binding.rvApps.visibility = View.VISIBLE
+private fun loadInstalledApps() {
+    binding.progressBar.visibility = View.VISIBLE
+    binding.rvApps.visibility = View.GONE
+    Thread {
+        val pm = packageManager
+        // Get all apps that have a launcher icon — this includes Samsung, Google, and third-party apps
+        val launcherIntent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
+        val apps = pm.queryIntentActivities(launcherIntent, 0)
+            .map { it.activityInfo.packageName }
+            .filter { it != packageName }
+            .toSet()
+            .mapNotNull { pkg ->
+                try {
+                    val info = pm.getApplicationInfo(pkg, 0)
+                    AppInfo(pkg, pm.getApplicationLabel(info).toString(), pm.getApplicationIcon(pkg))
+                } catch (_: Exception) { null }
             }
-        }.start()
-    }
-
-    private fun isSystemApp(info: ApplicationInfo) =
-        (info.flags and ApplicationInfo.FLAG_SYSTEM) != 0 &&
-        (info.flags and ApplicationInfo.FLAG_UPDATED_SYSTEM_APP) == 0
+            .sortedBy { it.name.lowercase() }
+        runOnUiThread {
+            adapter.setApps(apps)
+            binding.progressBar.visibility = View.GONE
+            binding.rvApps.visibility = View.VISIBLE
+        }
+    }.start()
+}
 
     private fun showPinDialog() {
         val view = layoutInflater.inflate(R.layout.dialog_pin_setup, null)

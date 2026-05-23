@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
     android:background="#F2F4F8">
 
-    <!-- Toolbar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -33,22 +33,31 @@
             android:textColor="#FFFFFF" />
     </LinearLayout>
 
-    <!-- Permission warning banner (hidden when permission is granted) -->
     <TextView
-        android:id="@+id/tvPermissionBanner"
+        android:id="@+id/tvUsageBanner"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="#E53935"
         android:gravity="center"
         android:padding="10dp"
-        android:text="⚠  Tap here to grant Usage Access permission"
+        android:text="⚠  Step 1: Tap to grant Usage Access"
         android:textColor="#FFFFFF"
         android:textStyle="bold"
         android:visibility="gone" />
 
-    <!-- PIN card -->
+    <TextView
+        android:id="@+id/tvOverlayBanner"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#F57C00"
+        android:gravity="center"
+        android:padding="10dp"
+        android:text="⚠  Step 2: Tap to grant Display Over Other Apps"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold"
+        android:visibility="gone" />
+
     <androidx.cardview.widget.CardView
-        xmlns:app="http://schemas.android.com/apk/res-auto"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_margin="12dp"
@@ -71,7 +80,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Unlock PIN"
+                    android:text="Step 3: Set your unlock PIN"
                     android:textStyle="bold"
                     android:textSize="15sp"
                     android:textColor="#1A1A2E" />
@@ -94,35 +103,29 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
-    <!-- Apps header -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingHorizontal="16dp"
-        android:paddingBottom="6dp"
-        android:text="APPS TO LOCK"
-        android:textSize="12sp"
-        android:textColor="#888888"
-        android:textStyle="bold"
-        android:letterSpacing="0.1" />
+        android:paddingBottom="4dp"
+        android:text="Step 4: Toggle switches to lock apps ↓"
+        android:textSize="13sp"
+        android:textColor="#1565C0"
+        android:textStyle="bold" />
 
-    <!-- Loading spinner -->
     <ProgressBar
         android:id="@+id/progressBar"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_gravity="center"
-        android:layout_marginTop="32dp"
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="24dp"
         android:visibility="gone" />
 
-    <!-- App list -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvApps"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:background="#FFFFFF"
-        android:clipToPadding="false"
-        android:paddingBottom="16dp" />
+        android:background="#FFFFFF" />
 
 </LinearLayout>

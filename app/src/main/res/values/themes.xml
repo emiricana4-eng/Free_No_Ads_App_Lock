@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <style name="Theme.AppLock" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorPrimaryVariant">@color/primary_dark</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="android:statusBarColor">@color/primary_dark</item>
+    </style>
+
+    <style name="PinButton" parent="Widget.MaterialComponents.Button">
+        <item name="android:layout_width">84dp</item>
+        <item name="android:layout_height">60dp</item>
+        <item name="android:textSize">20sp</item>
+        <item name="android:textColor">#FFFFFF</item>
+        <item name="android:layout_margin">5dp</item>
+        <item name="backgroundTint">#1A2A6E</item>
+        <item name="cornerRadius">10dp</item>
+        <item name="android:letterSpacing">0</item>
+    </style>
+
+</resources>

@@ -108,12 +108,14 @@ class LockOverlay(private val context: Context) {
 
     private fun updateDots(tvDots: TextView) {
         val total = if (recoveryMode) 8 else prefManager.pin.length.coerceAtLeast(4)
-        tvDots.text = "●".repeat(enteredPin.length) + "○".repeat((total - enteredPin.length).coerceAtLeast(0))
+        tvDots.text = "●".repeat(enteredPin.length) +
+                "○".repeat((total - enteredPin.length).coerceAtLeast(0))
     }
 
     private fun checkPin(tvDots: TextView) {
         if (prefManager.checkPin(enteredPin)) {
-            LockService.tempUnlocked.add(currentPackage)
+            // Record unlock timestamp — this is what prevents immediate re-locking
+            LockService.recentlyUnlocked[currentPackage] = System.currentTimeMillis()
             wrongAttempts = 0
             hide()
         } else {
@@ -128,7 +130,7 @@ class LockOverlay(private val context: Context) {
     private fun checkRecovery(tvDots: TextView) {
         if (prefManager.checkRecoveryCode(enteredPin)) {
             prefManager.clearPin()
-            LockService.tempUnlocked.add(currentPackage)
+            LockService.recentlyUnlocked[currentPackage] = System.currentTimeMillis()
             hide()
             toast("Recovery successful! Please set a new PIN.")
         } else {

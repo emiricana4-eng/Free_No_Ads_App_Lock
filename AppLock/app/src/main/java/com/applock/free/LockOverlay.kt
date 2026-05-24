@@ -1,6 +1,7 @@
 package com.applock.free
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
@@ -77,8 +78,7 @@ class LockOverlay(private val context: Context) {
                     updateDots(tvDots)
                     val target = if (recoveryMode) 8 else prefManager.pin.length
                     if (target > 0 && enteredPin.length >= target) {
-                        if (recoveryMode) checkRecovery(tvDots)
-                        else checkPin(tvDots)
+                        if (recoveryMode) checkRecovery(tvDots) else checkPin(tvDots)
                     }
                 }
             }
@@ -113,19 +113,9 @@ class LockOverlay(private val context: Context) {
     }
 
     private fun checkPin(tvDots: TextView) {
-    if (prefManager.checkPin(enteredPin)) {
-        LockService.recentlyUnlocked[currentPackage] = System.currentTimeMillis()
-        wrongAttempts = 0
-        val pkgToLaunch = currentPackage
-        hide()
-        // Bring the app back to the foreground after dismissing overlay
-        try {
-            val launchIntent = context.packageManager.getLaunchIntentForPackage(pkgToLaunch)?.apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-            }
-            if (launchIntent != null) context.startActivity(launchIntent)
-        } catch (_: Exception) {}
-    } else {
+        if (prefManager.checkPin(enteredPin)) {
+            grantAccess(currentPackage)
+        } else {
             wrongAttempts++
             vibrate()
             enteredPin = ""
@@ -137,22 +127,35 @@ class LockOverlay(private val context: Context) {
     private fun checkRecovery(tvDots: TextView) {
         if (prefManager.checkRecoveryCode(enteredPin)) {
             prefManager.clearPin()
-    LockService.recentlyUnlocked[currentPackage] = System.currentTimeMillis()
-    val pkgToLaunch = currentPackage
-    hide()
-    try {
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(pkgToLaunch)?.apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-        }
-        if (launchIntent != null) context.startActivity(launchIntent)
-    } catch (_: Exception) {}
-    toast("Recovery successful! Please set a new PIN.")
+            grantAccess(currentPackage)
+            toast("Recovery successful! Please set a new PIN.")
         } else {
             vibrate()
             enteredPin = ""
             tvDots.text = "○○○○○○○○"
             toast("Wrong recovery code")
         }
+    }
+
+    private fun grantAccess(pkg: String) {
+        // 1. Pause polling for 2 seconds — prevents any re-lock during app launch transition
+        LockService.pollPausedUntil = System.currentTimeMillis() + 2000L
+
+        // 2. Mark app as unlocked and clear any "left" timestamp
+        LockService.unlockedApps.add(pkg)
+        LockService.appLeftAt.remove(pkg)
+        LockService.lastTopApp = pkg
+
+        // 3. Dismiss overlay
+        hide()
+
+        // 4. Bring the app to foreground
+        try {
+            val intent = context.packageManager.getLaunchIntentForPackage(pkg)?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            }
+            if (intent != null) context.startActivity(intent)
+        } catch (_: Exception) {}
     }
 
     private fun vibrate() {

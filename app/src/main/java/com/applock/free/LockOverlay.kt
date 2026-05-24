@@ -19,6 +19,7 @@ class LockOverlay(private val context: Context) {
     private var overlayView: android.view.View? = null
     private var enteredPin = ""
     private var wrongAttempts = 0
+    private var recoveryMode = false
 
     var currentPackage = ""
 
@@ -46,6 +47,7 @@ class LockOverlay(private val context: Context) {
         overlayView = null
         enteredPin = ""
         wrongAttempts = 0
+        recoveryMode = false
     }
 
     fun isShowing() = overlayView != null
@@ -61,17 +63,27 @@ class LockOverlay(private val context: Context) {
     }
 
     private fun setupButtons(view: android.view.View) {
+        recoveryMode = false
         val tvDots = view.findViewById<TextView>(R.id.tvPinDots)
+        val tvAppName = view.findViewById<TextView>(R.id.tvAppName)
+        val tvForgot = view.findViewById<TextView>(R.id.tvForgotPin)
+        enteredPin = ""
         updateDots(tvDots)
 
         listOf(R.id.btn0, R.id.btn1, R.id.btn2, R.id.btn3, R.id.btn4,
                R.id.btn5, R.id.btn6, R.id.btn7, R.id.btn8, R.id.btn9
         ).forEachIndexed { index, id ->
             view.findViewById<Button>(id).setOnClickListener {
-                if (enteredPin.length < 8) {
+                val maxLen = if (recoveryMode) 8 else 8
+                if (enteredPin.length < maxLen) {
                     enteredPin += index.toString()
                     updateDots(tvDots)
-                    if (enteredPin.length >= prefManager.pin.length) checkPin(tvDots)
+                    // Auto-check once we hit the expected length
+                    val targetLen = if (recoveryMode) 8 else prefManager.pinLength
+                    if (enteredPin.length >= targetLen) {
+                        if (recoveryMode) checkRecovery(tvDots)
+                        else checkPin(tvDots)
+                    }
                 }
             }
         }
@@ -83,15 +95,27 @@ class LockOverlay(private val context: Context) {
             enteredPin = ""; updateDots(tvDots)
         }
 
-        // Forgot PIN link
-        view.findViewById<TextView>(R.id.tvForgotPin).setOnClickListener {
-            showRecoveryInput(view, tvDots)
+        tvForgot.setOnClickListener {
+            if (!recoveryMode) {
+                recoveryMode = true
+                enteredPin = ""
+                tvAppName.text = "Enter 8-digit recovery code"
+                tvForgot.text = "← Back to PIN"
+                tvDots.text = "○○○○○○○○"
+            } else {
+                recoveryMode = false
+                enteredPin = ""
+                updateAppName()
+                tvForgot.text = "Forgot PIN?"
+                updateDots(tvDots)
+            }
         }
     }
 
     private fun updateDots(tvDots: TextView) {
-        val total = (prefManager.pin.length / 64).coerceAtLeast(4) // pin is hashed, so use fixed 4
-        tvDots.text = "●".repeat(enteredPin.length) + "○".repeat((4 - enteredPin.length).coerceAtLeast(0))
+        val total = if (recoveryMode) 8 else prefManager.pinLength
+        tvDots.text = "●".repeat(enteredPin.length) +
+                "○".repeat((total - enteredPin.length).coerceAtLeast(0))
     }
 
     private fun checkPin(tvDots: TextView) {
@@ -101,61 +125,36 @@ class LockOverlay(private val context: Context) {
             hide()
         } else {
             wrongAttempts++
-            @Suppress("DEPRECATION")
-            (context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
-                ?.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
+            vibrate()
             val msg = if (wrongAttempts >= 3) "Wrong PIN ($wrongAttempts attempts)" else "Wrong PIN"
             enteredPin = ""; updateDots(tvDots)
-            Handler(Looper.getMainLooper()).post {
-                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
-            }
+            toast(msg)
         }
     }
 
-    private fun showRecoveryInput(view: android.view.View, tvDots: TextView) {
-        // Toggle to show recovery code input
-        val tvAppName = view.findViewById<TextView>(R.id.tvAppName)
-        tvAppName.text = "Enter 8-digit recovery code"
-        enteredPin = ""
-        updateDots(tvDots)
-
-        // Temporarily redirect button presses to recovery check
-        view.findViewById<TextView>(R.id.tvForgotPin).apply {
-            text = "← Back to PIN"
-            setOnClickListener {
-                updateAppName()
-                text = "Forgot PIN?"
-                enteredPin = ""
-                updateDots(tvDots)
-                setupButtons(view) // restore normal flow
-            }
+    private fun checkRecovery(tvDots: TextView) {
+        if (prefManager.checkRecoveryCode(enteredPin)) {
+            prefManager.clearPin()
+            LockService.tempUnlocked.add(currentPackage)
+            hide()
+            toast("Recovery successful! Please set a new PIN in App Lock.")
+        } else {
+            vibrate()
+            enteredPin = ""
+            tvDots.text = "○○○○○○○○"
+            toast("Wrong recovery code")
         }
+    }
 
-        listOf(R.id.btn0, R.id.btn1, R.id.btn2, R.id.btn3, R.id.btn4,
-               R.id.btn5, R.id.btn6, R.id.btn7, R.id.btn8, R.id.btn9
-        ).forEachIndexed { index, id ->
-            view.findViewById<Button>(id).setOnClickListener {
-                if (enteredPin.length < 8) {
-                    enteredPin += index.toString()
-                    tvDots.text = "●".repeat(enteredPin.length) + "○".repeat((8 - enteredPin.length).coerceAtLeast(0))
-                    if (enteredPin.length == 8) {
-                        if (prefManager.checkRecoveryCode(enteredPin)) {
-                            prefManager.clearPin()
-                            LockService.tempUnlocked.add(currentPackage)
-                            hide()
-                            Handler(Looper.getMainLooper()).post {
-                                Toast.makeText(context, "Recovery successful! Please set a new PIN.", Toast.LENGTH_LONG).show()
-                            }
-                        } else {
-                            enteredPin = ""
-                            tvDots.text = "○○○○○○○○"
-                            Handler(Looper.getMainLooper()).post {
-                                Toast.makeText(context, "Wrong recovery code", Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    }
-                }
-            }
+    private fun vibrate() {
+        @Suppress("DEPRECATION")
+        (context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)
+            ?.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
+    }
+
+    private fun toast(msg: String) {
+        Handler(Looper.getMainLooper()).post {
+            Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
         }
     }
 }

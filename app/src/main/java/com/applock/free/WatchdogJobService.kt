@@ -11,11 +11,15 @@ class WatchdogJobService : JobService() {
 
     override fun onStartJob(params: JobParameters?): Boolean {
         val prefs = PrefManager(this)
+
         if (prefs.isEnabled && prefs.hasPin()) {
             LockService.start(this)
         }
+
+        // Notify Android that the job completed successfully
         jobFinished(params, false)
-        return false
+
+        return true
     }
 
     override fun onStopJob(params: JobParameters?) = true

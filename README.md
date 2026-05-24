@@ -33,11 +33,3 @@ A completely ad-free Android app locker. No tracking, no ads, no internet permis
 | `POST_NOTIFICATIONS` | Show the persistent "protected" notification |
 
 No `INTERNET` permission. Ever.
-
----
-
-## Build Locally (Android Studio)
-
-1. Install Android Studio from developer.android.com/studio
-2. Open this folder → let Gradle sync
-3. Plug in phone → Run ▶

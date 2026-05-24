@@ -16,7 +16,7 @@ class WatchdogJobService : JobService() {
             LockService.start(this)
         }
 
-        // Notify Android that the job completed successfully
+        // Tell Android work is ongoing briefly
         jobFinished(params, false)
 
         return true
@@ -28,13 +28,20 @@ class WatchdogJobService : JobService() {
         private const val JOB_ID = 1337
 
         fun schedule(context: Context) {
-            val scheduler = context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+            val scheduler =
+                context.getSystemService(Context.JOB_SCHEDULER_SERVICE) as JobScheduler
+
             if (scheduler.allPendingJobs.any { it.id == JOB_ID }) return
-            val job = JobInfo.Builder(JOB_ID, ComponentName(context, WatchdogJobService::class.java))
+
+            val job = JobInfo.Builder(
+                JOB_ID,
+                ComponentName(context, WatchdogJobService::class.java)
+            )
                 .setPeriodic(15 * 60 * 1000L)
                 .setPersisted(true)
                 .setRequiredNetworkType(JobInfo.NETWORK_TYPE_NONE)
                 .build()
+
             scheduler.schedule(job)
         }
     }

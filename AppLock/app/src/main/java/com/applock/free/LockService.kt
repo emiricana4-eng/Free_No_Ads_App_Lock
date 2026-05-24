@@ -24,7 +24,10 @@ class LockService : Service() {
 
     private val pollRunnable = object : Runnable {
         override fun run() {
-            if (prefManager.isEnabled) checkForeground()
+            // Only poll if not paused (pause happens right after PIN entry)
+            if (prefManager.isEnabled && System.currentTimeMillis() > pollPausedUntil) {
+                checkForeground()
+            }
             handler.postDelayed(this, POLL_MS)
         }
     }
@@ -43,13 +46,7 @@ class LockService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        val restart = PendingIntent.getService(
-            applicationContext, 1,
-            Intent(applicationContext, LockService::class.java),
-            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-        )
-        (getSystemService(Context.ALARM_SERVICE) as AlarmManager)
-            .set(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + 1000, restart)
+        schedule(1)
         super.onTaskRemoved(rootIntent)
     }
 
@@ -57,17 +54,21 @@ class LockService : Service() {
         handler.removeCallbacks(pollRunnable)
         try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
         lockOverlay.hide()
-        val restart = PendingIntent.getService(
-            applicationContext, 2,
-            Intent(applicationContext, LockService::class.java),
-            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-        )
-        (getSystemService(Context.ALARM_SERVICE) as AlarmManager)
-            .set(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + 500, restart)
+        schedule(2)
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private fun schedule(id: Int) {
+        val restart = PendingIntent.getService(
+            applicationContext, id,
+            Intent(applicationContext, LockService::class.java),
+            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+        )
+        (getSystemService(Context.ALARM_SERVICE) as AlarmManager)
+            .set(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + 1000, restart)
+    }
 
     private fun checkForeground() {
         if (!Settings.canDrawOverlays(this)) return
@@ -79,30 +80,43 @@ class LockService : Service() {
 
         val topApp = stats.maxByOrNull { it.lastTimeUsed }?.packageName ?: return
 
-        // Never lock our own app
         if (topApp == packageName) {
             lockOverlay.hide()
             return
         }
 
-        // App is not locked — hide overlay if showing for it
+        // Record when the previous app was left
+        if (topApp != lastTopApp && lastTopApp.isNotEmpty() && lastTopApp != packageName) {
+            appLeftAt[lastTopApp] = now
+        }
+        lastTopApp = topApp
+
+        // Not a locked app — hide overlay if showing
         if (!prefManager.isLocked(topApp)) {
             if (lockOverlay.isShowing() && lockOverlay.currentPackage == topApp) lockOverlay.hide()
             return
         }
 
-        // App is locked — check if it was recently unlocked
-        val unlockedAt = recentlyUnlocked[topApp] ?: 0L
-        val relockDelay = prefManager.relockDelayMs.coerceAtLeast(MIN_GRACE_MS)
-        val timeSinceUnlock = now - unlockedAt
-
-        if (unlockedAt > 0 && timeSinceUnlock < relockDelay) {
-            // Within grace period — don't show lock screen
-            if (lockOverlay.isShowing() && lockOverlay.currentPackage == topApp) lockOverlay.hide()
-            return
+        // App is locked — is it currently in unlocked state?
+        if (unlockedApps.contains(topApp)) {
+            val leftAt = appLeftAt[topApp]
+            if (leftAt == null) {
+                // User hasn't left the app since unlocking — keep unlocked
+                if (lockOverlay.isShowing()) lockOverlay.hide()
+                return
+            }
+            val relockDelay = prefManager.relockDelayMs
+            val timeSinceLeft = now - leftAt
+            if (timeSinceLeft <= relockDelay) {
+                // Still within grace period
+                if (lockOverlay.isShowing()) lockOverlay.hide()
+                return
+            }
+            // Grace period over — re-lock
+            unlockedApps.remove(topApp)
+            appLeftAt.remove(topApp)
         }
 
-        // Lock has expired or was never unlocked — show lock screen
         lockOverlay.show(topApp)
     }
 
@@ -131,13 +145,21 @@ class LockService : Service() {
     }
 
     companion object {
-        private const val NOTIF_ID    = 1001
-        private const val CHANNEL_ID  = "applock_channel"
-        private const val POLL_MS     = 300L
-        private const val MIN_GRACE_MS = 5000L // 5 seconds minimum after unlock before re-locking
+        private const val NOTIF_ID   = 1001
+        private const val CHANNEL_ID = "applock_channel"
+        private const val POLL_MS    = 300L
 
-        // packageName → timestamp when user last unlocked it
-        val recentlyUnlocked = mutableMapOf<String, Long>()
+        // Polling is paused for 2s after PIN entry so startActivity transition doesn't re-trigger lock
+        var pollPausedUntil = 0L
+
+        // Apps the user has successfully unlocked this session
+        val unlockedApps = mutableSetOf<String>()
+
+        // When each app was last left (to calculate relock delay)
+        val appLeftAt = mutableMapOf<String, Long>()
+
+        // Last detected foreground app
+        var lastTopApp = ""
 
         fun start(context: Context) {
             val intent = Intent(context, LockService::class.java)

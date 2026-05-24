@@ -1,19 +1,6 @@
-# App Lock — Ad-Free, Open Source
+# App Lock — Ad-Free, Open Source and No Trackers
 
 A completely ad-free Android app locker. No tracking, no ads, no internet permission.
-
----
-
-## ⚡ Get the APK via GitHub Actions (No installs needed)
-
-1. Go to **github.com** → sign in (or create free account)
-2. Click **+** → **New repository** → name it `AppLock` → **Create**
-3. Upload this entire folder (drag & drop all files onto the repo page)
-4. GitHub auto-triggers the build — wait ~3 minutes
-5. Click **Actions** tab → click the latest run → scroll to **Artifacts**
-6. Download **AppLock-debug** → unzip → install the `.apk` on your phone
-
-That's it. No Android Studio, no local setup.
 
 ---
 

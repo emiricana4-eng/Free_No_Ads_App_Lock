@@ -33,7 +33,9 @@ class LockService : Service() {
 
     private val pollRunnable = object : Runnable {
         override fun run() {
-            if (prefManager.isEnabled &&
+
+            if (
+                prefManager.isEnabled &&
                 System.currentTimeMillis() > pollPausedUntil
             ) {
                 checkForeground()
@@ -51,7 +53,10 @@ class LockService : Service() {
 
         createNotificationChannel()
 
-        startForeground(NOTIF_ID, buildNotification())
+        startForeground(
+            NOTIF_ID,
+            buildNotification()
+        )
 
         registerReceiver(
             screenReceiver,
@@ -75,6 +80,7 @@ class LockService : Service() {
     }
 
     override fun onDestroy() {
+
         handler.removeCallbacks(pollRunnable)
 
         try {
@@ -92,6 +98,7 @@ class LockService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun schedule(id: Int) {
+
         val restart = PendingIntent.getService(
             applicationContext,
             id,
@@ -99,7 +106,10 @@ class LockService : Service() {
             PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        (getSystemService(Context.ALARM_SERVICE) as AlarmManager)
+        (
+            getSystemService(Context.ALARM_SERVICE)
+                    as AlarmManager
+            )
             .set(
                 AlarmManager.ELAPSED_REALTIME_WAKEUP,
                 SystemClock.elapsedRealtime() + 1000,
@@ -126,14 +136,16 @@ class LockService : Service() {
         if (stats.isNullOrEmpty()) return
 
         val topApp =
-            stats.maxByOrNull { it.lastTimeUsed }?.packageName ?: return
+            stats.maxByOrNull {
+                it.lastTimeUsed
+            }?.packageName ?: return
 
-        // Ignore system transitions and our own app
+        // Ignore our own app and Android transitions
         if (topApp in ignoredPackages) {
             return
         }
 
-        // Record when previous app was left
+        // Track when user left previous app
         if (
             topApp != lastTopApp &&
             lastTopApp.isNotEmpty() &&
@@ -144,7 +156,7 @@ class LockService : Service() {
 
         lastTopApp = topApp
 
-        // Not locked
+        // App is not locked
         if (!prefManager.isLocked(topApp)) {
 
             if (
@@ -158,10 +170,14 @@ class LockService : Service() {
         }
 
         // Already unlocked
-        if (unlockedApps.contains(topApp)) {
+        if (
+            unlockedApps.contains(topApp) ||
+            tempUnlocked.contains(topApp)
+        ) {
 
             val leftAt = appLeftAt[topApp]
 
+            // Never left app yet
             if (leftAt == null) {
 
                 if (lockOverlay.isShowing()) {
@@ -171,10 +187,13 @@ class LockService : Service() {
                 return
             }
 
-            val relockDelay = prefManager.relockDelayMs
-            val timeSinceLeft = now - leftAt
+            val relockDelay =
+                prefManager.relockDelayMs
 
-            // Still within grace period
+            val timeSinceLeft =
+                now - leftAt
+
+            // Still inside grace period
             if (timeSinceLeft <= relockDelay) {
 
                 if (lockOverlay.isShowing()) {
@@ -186,8 +205,11 @@ class LockService : Service() {
 
             // Grace period expired
             unlockedApps.remove(topApp)
+            tempUnlocked.remove(topApp)
             appLeftAt.remove(topApp)
         }
+
+        pendingLockPackage = topApp
 
         lockOverlay.show(topApp)
     }
@@ -202,7 +224,8 @@ class LockService : Service() {
                 NotificationManager.IMPORTANCE_MIN
             ).apply {
 
-                description = "Keeps your selected apps locked"
+                description =
+                    "Keeps your selected apps locked"
 
                 setShowBadge(false)
             }
@@ -210,7 +233,7 @@ class LockService : Service() {
             (
                 getSystemService(NOTIFICATION_SERVICE)
                         as NotificationManager
-                    )
+                )
                 .createNotificationChannel(channel)
         }
     }
@@ -224,7 +247,10 @@ class LockService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        return NotificationCompat.Builder(
+            this,
+            CHANNEL_ID
+        )
             .setContentTitle("App Lock Active")
             .setContentText("Your apps are protected")
             .setSmallIcon(android.R.drawable.ic_lock_lock)
@@ -240,19 +266,31 @@ class LockService : Service() {
         private const val NOTIF_ID = 1001
         private const val CHANNEL_ID = "applock_channel"
 
-        // Reduced polling aggressiveness
+        // Less aggressive polling
         private const val POLL_MS = 750L
 
-        // Pause polling briefly after PIN entry
+        // Pause polling briefly after unlock
+        @JvmField
         var pollPausedUntil = 0L
 
-        // Apps unlocked this session
+        // Apps unlocked during active session
+        @JvmField
         val unlockedApps = mutableSetOf<String>()
 
-        // Tracks when user last left an app
-        val appLeftAt = mutableMapOf<String, Long>()
+        // Legacy compatibility references
+        @JvmField
+        val tempUnlocked = mutableSetOf<String>()
 
-        // Last detected foreground app
+        @JvmField
+        var pendingLockPackage: String? = null
+
+        // Tracks when app was left
+        @JvmField
+        val appLeftAt =
+            mutableMapOf<String, Long>()
+
+        // Last foreground app
+        @JvmField
         var lastTopApp = ""
 
         fun start(context: Context) {
@@ -272,7 +310,10 @@ class LockService : Service() {
         fun stop(context: Context) {
 
             context.stopService(
-                Intent(context, LockService::class.java)
+                Intent(
+                    context,
+                    LockService::class.java
+                )
             )
         }
     }

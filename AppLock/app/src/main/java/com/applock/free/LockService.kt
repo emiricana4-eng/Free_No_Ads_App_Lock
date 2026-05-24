@@ -14,179 +14,446 @@ class LockService : Service() {
 
     private lateinit var prefManager: PrefManager
     private lateinit var lockOverlay: LockOverlay
-    private val handler = Handler(Looper.getMainLooper())
 
-    private val screenReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            if (intent.action == Intent.ACTION_SCREEN_ON) handler.post { checkForeground() }
-        }
+    private val handler =
+        Handler(Looper.getMainLooper())
+
+    // Packages ignored during foreground checks
+    private val ignoredPackages by lazy {
+
+        setOf(
+            packageName,
+            "com.android.systemui",
+            "com.google.android.permissioncontroller",
+            "com.android.launcher",
+            "com.google.android.launcher",
+            "com.android.settings",
+            "com.android.permissioncontroller",
+            "com.android.inputmethod.latin"
+        )
     }
 
-    private val pollRunnable = object : Runnable {
-        override fun run() {
-            // Only poll if not paused (pause happens right after PIN entry)
-            if (prefManager.isEnabled && System.currentTimeMillis() > pollPausedUntil) {
-                checkForeground()
+    private val screenReceiver =
+        object : BroadcastReceiver() {
+
+            override fun onReceive(
+                context: Context,
+                intent: Intent
+            ) {
+
+                if (
+                    intent.action ==
+                    Intent.ACTION_SCREEN_ON
+                ) {
+
+                    handler.post {
+                        checkForeground()
+                    }
+                }
             }
-            handler.postDelayed(this, POLL_MS)
         }
-    }
+
+    private val pollRunnable =
+        object : Runnable {
+
+            override fun run() {
+
+                if (
+                    prefManager.isEnabled &&
+                    System.currentTimeMillis() >
+                    pollPausedUntil
+                ) {
+
+                    checkForeground()
+                }
+
+                handler.postDelayed(
+                    this,
+                    POLL_MS
+                )
+            }
+        }
 
     override fun onCreate() {
+
         super.onCreate()
+
         prefManager = PrefManager(this)
+
         lockOverlay = LockOverlay(this)
+
         createNotificationChannel()
-        startForeground(NOTIF_ID, buildNotification())
-        registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_ON))
+
+        startForeground(
+            NOTIF_ID,
+            buildNotification()
+        )
+
+        registerReceiver(
+            screenReceiver,
+            IntentFilter(
+                Intent.ACTION_SCREEN_ON
+            )
+        )
+
         WatchdogJobService.schedule(this)
+
         handler.post(pollRunnable)
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int
+    ): Int {
 
-    override fun onTaskRemoved(rootIntent: Intent?) {
-        schedule(1)
+        return START_STICKY
+    }
+
+    override fun onTaskRemoved(
+        rootIntent: Intent?
+    ) {
+
+        scheduleRestart(1)
+
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
-        handler.removeCallbacks(pollRunnable)
-        try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
+
+        handler.removeCallbacks(
+            pollRunnable
+        )
+
+        try {
+
+            unregisterReceiver(
+                screenReceiver
+            )
+
+        } catch (_: Exception) {
+        }
+
         lockOverlay.hide()
-        schedule(2)
+
+        scheduleRestart(2)
+
         super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = null
+    override fun onBind(
+        intent: Intent?
+    ): IBinder? = null
 
-    private fun schedule(id: Int) {
-        val restart = PendingIntent.getService(
-            applicationContext, id,
-            Intent(applicationContext, LockService::class.java),
-            PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
-        )
-        (getSystemService(Context.ALARM_SERVICE) as AlarmManager)
-            .set(AlarmManager.ELAPSED_REALTIME_WAKEUP, SystemClock.elapsedRealtime() + 1000, restart)
+    private fun scheduleRestart(id: Int) {
+
+        val restartIntent =
+            PendingIntent.getService(
+                applicationContext,
+                id,
+                Intent(
+                    applicationContext,
+                    LockService::class.java
+                ),
+                PendingIntent.FLAG_ONE_SHOT or
+                        PendingIntent.FLAG_IMMUTABLE
+            )
+
+        (
+                getSystemService(
+                    Context.ALARM_SERVICE
+                ) as AlarmManager
+                )
+            .set(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + 1500,
+                restartIntent
+            )
     }
 
     private fun checkForeground() {
-        if (!Settings.canDrawOverlays(this)) return
 
-        val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val now = System.currentTimeMillis()
-        val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, now - 5_000, now)
-        if (stats.isNullOrEmpty()) return
+        if (
+            !Settings.canDrawOverlays(this)
+        ) return
 
-        val topApp = stats.maxByOrNull { it.lastTimeUsed }?.packageName ?: return
+        val usageStatsManager =
+            getSystemService(
+                Context.USAGE_STATS_SERVICE
+            ) as UsageStatsManager
 
-        if (topApp == packageName) {
-            lockOverlay.hide()
+        val now =
+            System.currentTimeMillis()
+
+        val stats =
+            usageStatsManager.queryUsageStats(
+                UsageStatsManager.INTERVAL_DAILY,
+                now - 10_000,
+                now
+            )
+
+        if (stats.isNullOrEmpty()) {
             return
         }
 
-        // Record when the previous app was left
-        if (topApp != lastTopApp && lastTopApp.isNotEmpty() && lastTopApp != packageName) {
-            appLeftAt[lastTopApp] = now
-        }
-        lastTopApp = topApp
+        val topApp =
+            stats.maxByOrNull {
+                it.lastTimeUsed
+            }?.packageName ?: return
 
-        // Not a locked app — hide overlay if showing
-        if (!prefManager.isLocked(topApp)) {
-            if (lockOverlay.isShowing() && lockOverlay.currentPackage == topApp) lockOverlay.hide()
+        // Ignore unstable transition packages
+        if (
+            topApp in ignoredPackages
+        ) {
             return
         }
 
-        // App is locked — is it currently in unlocked state?
-        if (unlockedApps.contains(topApp)) {
-            val leftAt = appLeftAt[topApp]
+        // Debounce noisy foreground changes
+        if (
+            topApp != lastTopApp
+        ) {
+
+            if (
+                now - lastForegroundChange <
+                FOREGROUND_DEBOUNCE_MS
+            ) {
+
+                return
+            }
+
+            lastForegroundChange = now
+
+            // Previous app was left
+            if (
+                lastTopApp.isNotEmpty() &&
+                lastTopApp !in ignoredPackages
+            ) {
+
+                appLeftAt[lastTopApp] = now
+            }
+
+            lastTopApp = topApp
+        }
+
+        // Not locked
+        if (
+            !prefManager.isLocked(topApp)
+        ) {
+
+            if (
+                lockOverlay.isShowing() &&
+                lockOverlay.currentPackage ==
+                topApp
+            ) {
+
+                lockOverlay.hide()
+            }
+
+            return
+        }
+
+        // Already unlocked
+        if (
+            unlockedApps.contains(topApp) ||
+            tempUnlocked.contains(topApp)
+        ) {
+
+            val leftAt =
+                appLeftAt[topApp]
+
+            // Never actually left app
             if (leftAt == null) {
-                // User hasn't left the app since unlocking — keep unlocked
-                if (lockOverlay.isShowing()) lockOverlay.hide()
+
+                lockOverlay.hide()
+
                 return
             }
-            val relockDelay = prefManager.relockDelayMs
-            val timeSinceLeft = now - leftAt
-            if (timeSinceLeft <= relockDelay) {
-                // Still within grace period
-                if (lockOverlay.isShowing()) lockOverlay.hide()
+
+            val relockDelay =
+                prefManager.relockDelayMs
+
+            val timeAway =
+                now - leftAt
+
+            // Still inside grace period
+            if (
+                timeAway <= relockDelay
+            ) {
+
+                lockOverlay.hide()
+
                 return
             }
-            // Grace period over — re-lock
+
+            // Grace period expired
             unlockedApps.remove(topApp)
+
+            tempUnlocked.remove(topApp)
+
             appLeftAt.remove(topApp)
         }
 
-        lockOverlay.show(topApp)
-    }
+        pendingLockPackage = topApp
 
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "App Lock", NotificationManager.IMPORTANCE_MIN).apply {
-                description = "Keeps your selected apps locked"
-                setShowBadge(false)
-            }
-            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
+        // Prevent duplicate overlays
+        if (
+            !lockOverlay.isShowing() ||
+            lockOverlay.currentPackage != topApp
+        ) {
+
+            lockOverlay.show(topApp)
         }
     }
 
-    private fun buildNotification(): Notification {
-        val intent = PendingIntent.getActivity(this, 0,
-            Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("App Lock Active")
-            .setContentText("Your apps are protected")
-            .setSmallIcon(android.R.drawable.ic_lock_lock)
+    private fun createNotificationChannel() {
+
+        if (
+            Build.VERSION.SDK_INT >=
+            Build.VERSION_CODES.O
+        ) {
+
+            val channel =
+                NotificationChannel(
+                    CHANNEL_ID,
+                    "App Lock",
+                    NotificationManager.IMPORTANCE_MIN
+                ).apply {
+
+                    description =
+                        "Keeps your selected apps locked"
+
+                    setShowBadge(false)
+                }
+
+            (
+                    getSystemService(
+                        NOTIFICATION_SERVICE
+                    ) as NotificationManager
+                    )
+                .createNotificationChannel(
+                    channel
+                )
+        }
+    }
+
+    private fun buildNotification():
+            Notification {
+
+        val intent =
+            PendingIntent.getActivity(
+                this,
+                0,
+                Intent(
+                    this,
+                    MainActivity::class.java
+                ),
+                PendingIntent.FLAG_IMMUTABLE
+            )
+
+        return NotificationCompat.Builder(
+            this,
+            CHANNEL_ID
+        )
+            .setContentTitle(
+                "App Lock Active"
+            )
+            .setContentText(
+                "Your apps are protected"
+            )
+            .setSmallIcon(
+                android.R.drawable.ic_lock_lock
+            )
             .setContentIntent(intent)
-            .setPriority(NotificationCompat.PRIORITY_MIN)
+            .setPriority(
+                NotificationCompat.PRIORITY_MIN
+            )
             .setOngoing(true)
             .setSilent(true)
             .build()
     }
 
-        companion object {
+    companion object {
 
         private const val NOTIF_ID = 1001
-        private const val CHANNEL_ID = "applock_channel"
 
-        // Reduced polling aggressiveness
-        private const val POLL_MS = 750L
+        private const val CHANNEL_ID =
+            "applock_channel"
 
-        // Pause polling briefly after PIN entry
+        // Slower polling = less Android noise
+        private const val POLL_MS = 1200L
+
+        // Foreground stability debounce
+        private const val
+        FOREGROUND_DEBOUNCE_MS = 1200L
+
+        // Pause polling after unlock
+        @JvmField
         var pollPausedUntil = 0L
 
-        // Apps unlocked this session
-        val unlockedApps = mutableSetOf<String>()
+        // Current unlocked apps
+        @JvmField
+        val unlockedApps =
+            mutableSetOf<String>()
 
-        // Compatibility variables for older code references
-        val tempUnlocked = mutableSetOf<String>()
+        // Compatibility with older files
+        @JvmField
+        val tempUnlocked =
+            mutableSetOf<String>()
 
-        var pendingLockPackage: String? = null
+        @JvmField
+        var pendingLockPackage:
+                String? = null
 
-        // Tracks when user last left an app
-        val appLeftAt = mutableMapOf<String, Long>()
+        // Tracks app leave times
+        @JvmField
+        val appLeftAt =
+            mutableMapOf<String, Long>()
 
-        // Last detected foreground app
+        // Last detected app
+        @JvmField
         var lastTopApp = ""
 
-        fun start(context: Context) {
+        // Foreground change debounce
+        @JvmField
+        var lastForegroundChange = 0L
 
-            val intent = Intent(
-                context,
-                LockService::class.java
-            )
+        fun start(
+            context: Context
+        ) {
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
+            val intent =
+                Intent(
+                    context,
+                    LockService::class.java
+                )
+
+            if (
+                Build.VERSION.SDK_INT >=
+                Build.VERSION_CODES.O
+            ) {
+
+                context.startForegroundService(
+                    intent
+                )
+
             } else {
-                context.startService(intent)
+
+                context.startService(
+                    intent
+                )
             }
         }
 
-        fun stop(context: Context) {
+        fun stop(
+            context: Context
+        ) {
 
             context.stopService(
-                Intent(context, LockService::class.java)
+                Intent(
+                    context,
+                    LockService::class.java
+                )
             )
         }
     }
+}2

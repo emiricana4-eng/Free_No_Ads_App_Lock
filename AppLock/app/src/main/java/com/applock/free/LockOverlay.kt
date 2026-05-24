@@ -113,12 +113,19 @@ class LockOverlay(private val context: Context) {
     }
 
     private fun checkPin(tvDots: TextView) {
-        if (prefManager.checkPin(enteredPin)) {
-            // Record unlock timestamp — this is what prevents immediate re-locking
-            LockService.recentlyUnlocked[currentPackage] = System.currentTimeMillis()
-            wrongAttempts = 0
-            hide()
-        } else {
+    if (prefManager.checkPin(enteredPin)) {
+        LockService.recentlyUnlocked[currentPackage] = System.currentTimeMillis()
+        wrongAttempts = 0
+        val pkgToLaunch = currentPackage
+        hide()
+        // Bring the app back to the foreground after dismissing overlay
+        try {
+            val launchIntent = context.packageManager.getLaunchIntentForPackage(pkgToLaunch)?.apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+            }
+            if (launchIntent != null) context.startActivity(launchIntent)
+        } catch (_: Exception) {}
+    } else {
             wrongAttempts++
             vibrate()
             enteredPin = ""
@@ -130,9 +137,16 @@ class LockOverlay(private val context: Context) {
     private fun checkRecovery(tvDots: TextView) {
         if (prefManager.checkRecoveryCode(enteredPin)) {
             prefManager.clearPin()
-            LockService.recentlyUnlocked[currentPackage] = System.currentTimeMillis()
-            hide()
-            toast("Recovery successful! Please set a new PIN.")
+    LockService.recentlyUnlocked[currentPackage] = System.currentTimeMillis()
+    val pkgToLaunch = currentPackage
+    hide()
+    try {
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(pkgToLaunch)?.apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+        }
+        if (launchIntent != null) context.startActivity(launchIntent)
+    } catch (_: Exception) {}
+    toast("Recovery successful! Please set a new PIN.")
         } else {
             vibrate()
             enteredPin = ""

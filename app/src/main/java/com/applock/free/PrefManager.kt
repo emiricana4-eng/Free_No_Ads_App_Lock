@@ -28,8 +28,9 @@ class PrefManager(context: Context) {
         get() = HashSet(prefs.getStringSet(KEY_LOCKED_APPS, emptySet()) ?: emptySet())
         set(value) { prefs.edit().putStringSet(KEY_LOCKED_APPS, value).apply() }
 
+    // Changed default relock delay from 0L to 5000L (5 seconds)
     var relockDelayMs: Long
-        get() = prefs.getLong(KEY_RELOCK_DELAY, 0L)
+        get() = prefs.getLong(KEY_RELOCK_DELAY, 5000L)
         set(value) { prefs.edit().putLong(KEY_RELOCK_DELAY, value).apply() }
 
     var recoveryCode: String
@@ -55,7 +56,8 @@ class PrefManager(context: Context) {
         return code
     }
 
-    fun checkRecoveryCode(input: String) = recoveryCode.isNotEmpty() && sha256(input) == recoveryCode
+    fun checkRecoveryCode(input: String) =
+        recoveryCode.isNotEmpty() && sha256(input) == recoveryCode
 
     fun clearPin() {
         prefs.edit().remove(KEY_PIN).remove(KEY_PIN_LENGTH).apply()
@@ -67,13 +69,13 @@ class PrefManager(context: Context) {
     }
 
     companion object {
-        private const val PREFS_NAME        = "applock_prefs"
-        private const val KEY_PIN           = "pin"
-        private const val KEY_PIN_LENGTH    = "pin_length"
-        private const val KEY_ENABLED       = "enabled"
-        private const val KEY_LOCKED_APPS   = "locked_apps"
-        private const val KEY_RELOCK_DELAY  = "relock_delay"
-        private const val KEY_RECOVERY_CODE = "recovery_code"
+        private const val PREFS_NAME         = "applock_prefs"
+        private const val KEY_PIN            = "pin"
+        private const val KEY_PIN_LENGTH     = "pin_length"
+        private const val KEY_ENABLED        = "enabled"
+        private const val KEY_LOCKED_APPS    = "locked_apps"
+        private const val KEY_RELOCK_DELAY   = "relock_delay"
+        private const val KEY_RECOVERY_CODE  = "recovery_code"
         private const val KEY_BATTERY_PROMPT = "battery_prompt"
     }
 }

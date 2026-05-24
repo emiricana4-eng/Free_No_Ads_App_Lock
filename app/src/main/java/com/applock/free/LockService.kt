@@ -16,8 +16,9 @@ class LockService : Service() {
     private lateinit var lockOverlay: LockOverlay
     private val handler = Handler(Looper.getMainLooper())
     private var lastForeground = ""
+    // Track when each app was last left, for relock delay
+    private val appLeftTime = mutableMapOf<String, Long>()
 
-    // Re-check immediately every time the screen turns on
     private val screenReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == Intent.ACTION_SCREEN_ON) {
@@ -42,11 +43,28 @@ class LockService : Service() {
         registerReceiver(screenReceiver, IntentFilter(Intent.ACTION_SCREEN_ON))
         WatchdogJobService.schedule(this)
         handler.post(pollRunnable)
+
+        // Handle pending lock from notification tap
+        if (pendingLockPackage.isNotEmpty()) {
+            handler.postDelayed({
+                if (pendingLockPackage.isNotEmpty()) {
+                    lockOverlay.show(pendingLockPackage)
+                    pendingLockPackage = ""
+                }
+            }, 300)
+        }
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Handle notification-triggered lock
+        if (pendingLockPackage.isNotEmpty()) {
+            val pkg = pendingLockPackage
+            pendingLockPackage = ""
+            handler.postDelayed({ lockOverlay.show(pkg) }, 200)
+        }
+        return START_STICKY
+    }
 
-    // Called when user swipes app from recents — restart after 1 second
     override fun onTaskRemoved(rootIntent: Intent?) {
         val restart = PendingIntent.getService(
             applicationContext, 1,
@@ -62,7 +80,6 @@ class LockService : Service() {
         handler.removeCallbacks(pollRunnable)
         try { unregisterReceiver(screenReceiver) } catch (_: Exception) {}
         lockOverlay.hide()
-        // Restart self immediately
         val restart = PendingIntent.getService(
             applicationContext, 2,
             Intent(applicationContext, LockService::class.java),
@@ -88,15 +105,38 @@ class LockService : Service() {
         if (topApp == packageName) { lockOverlay.hide(); return }
 
         if (topApp != lastForeground) {
-            if (lastForeground.isNotEmpty()) tempUnlocked.remove(lastForeground)
+            if (lastForeground.isNotEmpty()) {
+                appLeftTime[lastForeground] = System.currentTimeMillis()
+                tempUnlocked.remove(lastForeground)
+            }
             lastForeground = topApp
         }
 
-        when {
-            prefManager.isLocked(topApp) && topApp !in tempUnlocked -> lockOverlay.show(topApp)
-            !prefManager.isLocked(topApp) || topApp in tempUnlocked -> {
-                if (lockOverlay.isShowing() && lockOverlay.currentPackage == topApp) lockOverlay.hide()
-            }
+        if (!prefManager.isLocked(topApp)) {
+            if (lockOverlay.isShowing() && lockOverlay.currentPackage == topApp) lockOverlay.hide()
+            return
+        }
+
+        // Check relock delay — if app was recently unlocked, give grace period
+        val delayMs = prefManager.relockDelayMs
+        val leftAt = appLeftTime[topApp] ?: 0L
+        val timeSinceLeft = System.currentTimeMillis() - leftAt
+
+        if (topApp in tempUnlocked && delayMs > 0 && timeSinceLeft < delayMs) {
+            // Within grace period — don't re-lock
+            if (lockOverlay.isShowing() && lockOverlay.currentPackage == topApp) lockOverlay.hide()
+            return
+        }
+
+        // Remove from tempUnlocked if grace period expired
+        if (topApp in tempUnlocked && (delayMs == 0L || timeSinceLeft >= delayMs)) {
+            tempUnlocked.remove(topApp)
+        }
+
+        if (topApp !in tempUnlocked) {
+            lockOverlay.show(topApp)
+        } else {
+            if (lockOverlay.isShowing() && lockOverlay.currentPackage == topApp) lockOverlay.hide()
         }
     }
 
@@ -130,6 +170,7 @@ class LockService : Service() {
         private const val POLL_MS    = 300L
 
         val tempUnlocked = mutableSetOf<String>()
+        var pendingLockPackage = ""
 
         fun start(context: Context) {
             val intent = Intent(context, LockService::class.java)

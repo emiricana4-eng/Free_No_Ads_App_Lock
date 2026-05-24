@@ -1,89 +1,56 @@
 # App Lock — Ad-Free, Open Source
 
-A minimal, completely ad-free app locker for Android.
-No tracking, no accounts, no internet permission.
+A completely ad-free Android app locker. No tracking, no ads, no internet permission.
+
+---
+
+## ⚡ Get the APK via GitHub Actions (No installs needed)
+
+1. Go to **github.com** → sign in (or create free account)
+2. Click **+** → **New repository** → name it `AppLock` → **Create**
+3. Upload this entire folder (drag & drop all files onto the repo page)
+4. GitHub auto-triggers the build — wait ~3 minutes
+5. Click **Actions** tab → click the latest run → scroll to **Artifacts**
+6. Download **AppLock-debug** → unzip → install the `.apk` on your phone
+
+That's it. No Android Studio, no local setup.
 
 ---
 
 ## Features
 - Lock any user-installed app behind a PIN
-- Auto-relocks when you leave and return to the app
-- Survives reboots (auto-restarts service)
-- Foreground service with minimal notification
-- Fingerprint support can be added (see notes below)
-
----
-
-## Build Instructions
-
-### Requirements
-- Android Studio Hedgehog (2023.1.1) or newer
-- JDK 17+
-- Android SDK with API 34
-
-### Steps
-
-1. Open Android Studio → File → New → Import Project
-2. Select this folder (AppLock/)
-3. Wait for Gradle sync to complete
-4. Connect your phone or start an emulator
-5. Run → Run 'app'
-
-If Gradle sync fails, try: File → Invalidate Caches / Restart
+- Re-locks every time you leave and return
+- Survives reboots
+- Zero internet permission — cannot phone home
+- No ads, no SDKs, no trackers
 
 ---
 
 ## First-Time Setup on Phone
 
 1. Open App Lock
-2. Tap **Set PIN** and choose a 4–8 digit PIN
-3. Tap the **⚠ banner** to grant Usage Access permission
-   - Find "App Lock" in the list → enable it
-4. Toggle **Active** to ON
-5. Go to the app list and toggle the apps you want locked
+2. Tap **Set PIN** → choose a 4–8 digit PIN
+3. Tap the red ⚠ banner → grant **Usage Access** for App Lock
+4. Toggle **Active** → ON
+5. Flip the switch next to any app to lock it
 
 ---
 
-## How It Works
-
-- A foreground service polls `UsageStatsManager` every 500ms
-- When a locked app comes to the foreground, `LockActivity` is launched on top
-- After correct PIN entry, the app is temporarily unlocked for that session
-- When the user leaves and returns to the app, it re-locks
-
----
-
-## Permissions Used
+## Permissions
 
 | Permission | Why |
 |---|---|
 | `PACKAGE_USAGE_STATS` | Detect which app is in the foreground |
-| `FOREGROUND_SERVICE` | Keep monitoring service running |
+| `FOREGROUND_SERVICE` | Keep the monitoring service running |
 | `RECEIVE_BOOT_COMPLETED` | Auto-start after reboot |
-| `POST_NOTIFICATIONS` | Show the "App Lock Active" notification |
+| `POST_NOTIFICATIONS` | Show the persistent "protected" notification |
 
-No internet permission. No analytics. No ads. Ever.
+No `INTERNET` permission. Ever.
 
 ---
 
-## Optional: Add Fingerprint Support
+## Build Locally (Android Studio)
 
-In `LockActivity.kt`, add a `BiometricPrompt` call after `setupNumpad()`:
-
-```kotlin
-val biometricPrompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
-    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-        grantAccess()
-    }
-})
-val promptInfo = BiometricPrompt.PromptInfo.Builder()
-    .setTitle("Unlock ${binding.tvAppName.text}")
-    .setNegativeButtonText("Use PIN")
-    .build()
-biometricPrompt.authenticate(promptInfo)
-```
-
-Add dependency in app/build.gradle.kts:
-```kotlin
-implementation("androidx.biometric:biometric:1.1.0")
-```
+1. Install Android Studio from developer.android.com/studio
+2. Open this folder → let Gradle sync
+3. Plug in phone → Run ▶

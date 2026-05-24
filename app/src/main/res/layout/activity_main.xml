@@ -6,6 +6,7 @@
     android:orientation="vertical"
     android:background="#F2F4F8">
 
+    <!-- Toolbar -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -25,6 +26,19 @@
             android:textSize="20sp"
             android:textStyle="bold" />
 
+        <!-- Settings gear (shown after PIN is set) -->
+        <Button
+            android:id="@+id/btnSettings"
+            android:layout_width="wrap_content"
+            android:layout_height="32dp"
+            android:text="⚙ Settings"
+            android:textSize="12sp"
+            android:backgroundTint="#0D47A1"
+            android:textColor="#FFFFFF"
+            android:layout_marginEnd="8dp"
+            android:visibility="gone"
+            android:paddingHorizontal="10dp"/>
+
         <androidx.appcompat.widget.SwitchCompat
             android:id="@+id/switchEnable"
             android:layout_width="wrap_content"
@@ -33,6 +47,7 @@
             android:textColor="#FFFFFF" />
     </LinearLayout>
 
+    <!-- Usage Access banner -->
     <TextView
         android:id="@+id/tvUsageBanner"
         android:layout_width="match_parent"
@@ -45,6 +60,7 @@
         android:textStyle="bold"
         android:visibility="gone" />
 
+    <!-- Overlay permission banner -->
     <TextView
         android:id="@+id/tvOverlayBanner"
         android:layout_width="match_parent"
@@ -57,7 +73,9 @@
         android:textStyle="bold"
         android:visibility="gone" />
 
+    <!-- PIN setup card (hidden once PIN is set) -->
     <androidx.cardview.widget.CardView
+        android:id="@+id/pinSetupCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_margin="12dp"
@@ -103,12 +121,13 @@
         </LinearLayout>
     </androidx.cardview.widget.CardView>
 
+    <!-- Apps instruction -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:paddingHorizontal="16dp"
         android:paddingBottom="4dp"
-        android:text="Step 4: Toggle switches to lock apps ↓"
+        android:text="Toggle switches to lock apps ↓"
         android:textSize="13sp"
         android:textColor="#1565C0"
         android:textStyle="bold" />

@@ -3,7 +3,6 @@ package com.applock.free
 import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
-import android.content.pm.ApplicationInfo
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -38,7 +37,8 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshBanners()
         syncToggle()
-        promptBatteryOptimization()
+        refreshPinCard()
+        if (!prefManager.batteryPromptShown) promptBatteryOptimization()
     }
 
     private fun setupRecyclerView() {
@@ -51,14 +51,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupControls() {
-        binding.btnSetPin.setOnClickListener { showPinDialog() }
+        binding.btnSetPin.setOnClickListener { showSetPinDialog() }
+
+        binding.btnSettings.setOnClickListener {
+            startActivity(Intent(this, SettingsActivity::class.java))
+        }
+
         binding.tvUsageBanner.setOnClickListener {
             startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
         }
         binding.tvOverlayBanner.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                Uri.parse("package:$packageName")))
+            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
         }
+
         binding.switchEnable.setOnCheckedChangeListener { _, isChecked ->
             when {
                 isChecked && !hasUsagePermission() -> {
@@ -71,8 +76,7 @@ class MainActivity : AppCompatActivity() {
                     binding.switchEnable.isChecked = false
                     showPermissionDialog("Display Over Other Apps",
                         "App Lock needs permission to show the lock screen on top of other apps.",
-                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:$packageName")))
+                        Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
                 }
                 isChecked && !prefManager.hasPin() -> {
                     binding.switchEnable.isChecked = false
@@ -80,17 +84,22 @@ class MainActivity : AppCompatActivity() {
                 }
                 else -> {
                     prefManager.isEnabled = isChecked
-                    if (isChecked) {
-                        LockService.start(this)
-                        WatchdogJobService.schedule(this)
-                    } else {
-                        LockService.stop(this)
-                    }
-                    Toast.makeText(this,
-                        if (isChecked) "App Lock enabled ✓" else "App Lock disabled",
-                        Toast.LENGTH_SHORT).show()
+                    if (isChecked) { LockService.start(this); WatchdogJobService.schedule(this) }
+                    else LockService.stop(this)
+                    Toast.makeText(this, if (isChecked) "App Lock enabled ✓" else "App Lock disabled", Toast.LENGTH_SHORT).show()
                 }
             }
+        }
+    }
+
+    private fun refreshPinCard() {
+        if (prefManager.hasPin()) {
+            // PIN is set — hide the setup card, show settings button
+            binding.pinSetupCard.visibility = View.GONE
+            binding.btnSettings.visibility = View.VISIBLE
+        } else {
+            binding.pinSetupCard.visibility = View.VISIBLE
+            binding.btnSettings.visibility = View.GONE
         }
     }
 
@@ -99,8 +108,7 @@ class MainActivity : AppCompatActivity() {
         binding.switchEnable.isChecked = prefManager.isEnabled
         setupControls()
         if (prefManager.isEnabled && hasUsagePermission() && hasOverlayPermission()) {
-            LockService.start(this)
-            WatchdogJobService.schedule(this)
+            LockService.start(this); WatchdogJobService.schedule(this)
         }
     }
 
@@ -109,47 +117,19 @@ class MainActivity : AppCompatActivity() {
         binding.tvOverlayBanner.visibility = if (hasOverlayPermission()) View.GONE else View.VISIBLE
     }
 
-    private fun promptBatteryOptimization() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
-        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-        if (pm.isIgnoringBatteryOptimizations(packageName)) return
-        AlertDialog.Builder(this)
-            .setTitle("⚠ Improve Reliability")
-            .setMessage(
-                "Samsung's battery optimizer may stop App Lock from working in the background.\n\n" +
-                "Tap OK → find 'App Lock' → set to 'Unrestricted' to keep it always running."
-            )
-            .setPositiveButton("Open Settings") { _, _ ->
-                try {
-                    startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:$packageName")
-                    })
-                } catch (_: Exception) {
-                    startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                }
-            }
-            .setNegativeButton("Later", null)
-            .show()
-    }
-
     private fun loadInstalledApps() {
         binding.progressBar.visibility = View.VISIBLE
         binding.rvApps.visibility = View.GONE
         Thread {
             val pm = packageManager
-            val launcherIntent = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_LAUNCHER)
-            }
+            val launcherIntent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_LAUNCHER) }
             val apps = pm.queryIntentActivities(launcherIntent, 0)
                 .map { it.activityInfo.packageName }
                 .filter { it != packageName }
                 .toSet()
                 .mapNotNull { pkg ->
-                    try {
-                        val info = pm.getApplicationInfo(pkg, 0)
-                        AppInfo(pkg, pm.getApplicationLabel(info).toString(),
-                            pm.getApplicationIcon(pkg))
-                    } catch (_: Exception) { null }
+                    try { AppInfo(pkg, pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString(), pm.getApplicationIcon(pkg)) }
+                    catch (_: Exception) { null }
                 }
                 .sortedBy { it.name.lowercase() }
             runOnUiThread {
@@ -160,41 +140,57 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun showPinDialog() {
+    private fun showSetPinDialog() {
         val view = layoutInflater.inflate(R.layout.dialog_pin_setup, null)
         val etNew     = view.findViewById<EditText>(R.id.etNewPin)
         val etConfirm = view.findViewById<EditText>(R.id.etConfirmPin)
         AlertDialog.Builder(this)
-            .setTitle(if (prefManager.hasPin()) "Change PIN" else "Set PIN")
+            .setTitle("Set PIN")
             .setView(view)
             .setPositiveButton("Save") { _, _ ->
                 val newPin  = etNew.text.toString().trim()
                 val confirm = etConfirm.text.toString().trim()
                 when {
-                    newPin.length < 4 ->
-                        Toast.makeText(this, "PIN must be at least 4 digits", Toast.LENGTH_SHORT).show()
-                    newPin != confirm ->
-                        Toast.makeText(this, "PINs do not match", Toast.LENGTH_SHORT).show()
+                    newPin.length < 4 -> Toast.makeText(this, "PIN must be at least 4 digits", Toast.LENGTH_SHORT).show()
+                    newPin != confirm  -> Toast.makeText(this, "PINs do not match", Toast.LENGTH_SHORT).show()
                     else -> {
                         prefManager.pin = newPin
-                        Toast.makeText(this, "PIN saved ✓", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this, "PIN saved ✓ — Generate a recovery code in Settings!", Toast.LENGTH_LONG).show()
+                        refreshPinCard()
                     }
                 }
             }
             .setNegativeButton("Cancel", null).show()
     }
 
-    private fun hasUsagePermission(): Boolean {
-        val ops = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        return ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS,
-            android.os.Process.myUid(), packageName) == AppOpsManager.MODE_ALLOWED
+    private fun promptBatteryOptimization() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+        prefManager.batteryPromptShown = true
+        AlertDialog.Builder(this)
+            .setTitle("⚠ Improve Reliability")
+            .setMessage("Samsung's battery optimizer may stop App Lock from working in the background.\n\nTap OK → find 'App Lock' → set to 'Unrestricted'.")
+            .setPositiveButton("Open Settings") { _, _ ->
+                try {
+                    startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = Uri.parse("package:$packageName")
+                    })
+                } catch (_: Exception) {
+                    startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                }
+            }
+            .setNegativeButton("Later", null).show()
     }
 
+    private fun hasUsagePermission(): Boolean {
+        val ops = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        return ops.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName) == AppOpsManager.MODE_ALLOWED
+    }
     private fun hasOverlayPermission() = Settings.canDrawOverlays(this)
 
     private fun showPermissionDialog(title: String, message: String, intent: Intent) {
-        AlertDialog.Builder(this)
-            .setTitle(title).setMessage(message)
+        AlertDialog.Builder(this).setTitle(title).setMessage(message)
             .setPositiveButton("Open Settings") { _, _ -> startActivity(intent) }
             .setNegativeButton("Cancel", null).show()
     }

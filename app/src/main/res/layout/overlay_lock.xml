@@ -55,4 +55,14 @@
 
     </GridLayout>
 
+    <TextView
+        android:id="@+id/tvForgotPin"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Forgot PIN?"
+        android:textColor="#90CAF9"
+        android:textSize="14sp"
+        android:layout_marginTop="20dp"
+        android:padding="8dp" />
+
 </LinearLayout>

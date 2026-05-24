@@ -144,29 +144,49 @@ class LockService : Service() {
             .build()
     }
 
-    companion object {
-        private const val NOTIF_ID   = 1001
-        private const val CHANNEL_ID = "applock_channel"
-        private const val POLL_MS    = 300L
+        companion object {
 
-        // Polling is paused for 2s after PIN entry so startActivity transition doesn't re-trigger lock
+        private const val NOTIF_ID = 1001
+        private const val CHANNEL_ID = "applock_channel"
+
+        // Reduced polling aggressiveness
+        private const val POLL_MS = 750L
+
+        // Pause polling briefly after PIN entry
         var pollPausedUntil = 0L
 
-        // Apps the user has successfully unlocked this session
+        // Apps unlocked this session
         val unlockedApps = mutableSetOf<String>()
 
-        // When each app was last left (to calculate relock delay)
+        // Compatibility variables for older code references
+        val tempUnlocked = mutableSetOf<String>()
+
+        var pendingLockPackage: String? = null
+
+        // Tracks when user last left an app
         val appLeftAt = mutableMapOf<String, Long>()
 
         // Last detected foreground app
         var lastTopApp = ""
 
         fun start(context: Context) {
-            val intent = Intent(context, LockService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) context.startForegroundService(intent)
-            else context.startService(intent)
+
+            val intent = Intent(
+                context,
+                LockService::class.java
+            )
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
         }
 
-        fun stop(context: Context) = context.stopService(Intent(context, LockService::class.java))
+        fun stop(context: Context) {
+
+            context.stopService(
+                Intent(context, LockService::class.java)
+            )
+        }
     }
-}

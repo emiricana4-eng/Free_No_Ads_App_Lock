@@ -86,8 +86,9 @@ class LockActivity : AppCompatActivity() {
         enteredPin += digit
         updateDots()
         // Auto-check once we reach the stored PIN length
-        if (enteredPin.length >= prefManager.pin.length) checkPin()
-    }
+        if (enteredPin.length >= prefManager.pinLength) {
+    checkPin()
+}
 
     private fun removeLastDigit() {
         if (enteredPin.isNotEmpty()) {
@@ -102,24 +103,33 @@ class LockActivity : AppCompatActivity() {
     }
 
     private fun updateDots() {
-        val total = prefManager.pin.length.coerceAtLeast(4)
+        val total = prefManager.pinLength.coerceAtLeast(4)
         val filled = enteredPin.length
         binding.tvPinDots.text =
             "●".repeat(filled) + "○".repeat((total - filled).coerceAtLeast(0))
     }
 
     private fun checkPin() {
-        if (enteredPin == prefManager.pin) {
-            grantAccess()
-        } else {
-            onWrongPin()
-        }
+    if (prefManager.checkPin(enteredPin)) {
+        grantAccess()
+    } else {
+        onWrongPin()
     }
+}
 
     private fun grantAccess() {
-        LockService.tempUnlocked.add(packageToUnlock)
-        finish()
-    }
+
+    LockService.unlockedApps.add(packageToUnlock)
+
+    LockService.tempUnlocked.add(packageToUnlock)
+
+    LockService.appLeftAt.remove(packageToUnlock)
+
+    LockService.pollPausedUntil =
+        System.currentTimeMillis() + 3000
+
+    finish()
+}
 
     private fun onWrongPin() {
         // Shake the dots

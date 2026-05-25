@@ -18,10 +18,6 @@ class LockActivity : AppCompatActivity() {
     private var packageToUnlock = ""
     private var enteredPin = ""
 
-    // -------------------------------------------------------------------------
-    // Lifecycle
-    // -------------------------------------------------------------------------
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityLockBinding.inflate(layoutInflater)
@@ -30,7 +26,6 @@ class LockActivity : AppCompatActivity() {
         prefManager = PrefManager(this)
         packageToUnlock = intent.getStringExtra(EXTRA_PACKAGE) ?: ""
 
-        // Edge case: if no PIN is set, just let them in
         if (!prefManager.hasPin()) {
             grantAccess()
             return
@@ -43,7 +38,6 @@ class LockActivity : AppCompatActivity() {
 
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
-        // Service may re-send intent for a different app while we're already showing
         val newPackage = intent?.getStringExtra(EXTRA_PACKAGE)
         if (!newPackage.isNullOrEmpty() && newPackage != packageToUnlock) {
             packageToUnlock = newPackage
@@ -51,10 +45,6 @@ class LockActivity : AppCompatActivity() {
             clearPin()
         }
     }
-
-    // -------------------------------------------------------------------------
-    // Setup
-    // -------------------------------------------------------------------------
 
     private fun showAppName() {
         val label = try {
@@ -77,18 +67,14 @@ class LockActivity : AppCompatActivity() {
         binding.btnClear.setOnClickListener { clearPin() }
     }
 
-    // -------------------------------------------------------------------------
-    // PIN logic
-    // -------------------------------------------------------------------------
-
     private fun appendDigit(digit: String) {
         if (enteredPin.length >= MAX_PIN_LENGTH) return
         enteredPin += digit
         updateDots()
-        // Auto-check once we reach the stored PIN length
         if (enteredPin.length >= prefManager.pinLength) {
-    checkPin()
-}
+            checkPin()
+        }
+    }
 
     private fun removeLastDigit() {
         if (enteredPin.isNotEmpty()) {
@@ -110,42 +96,35 @@ class LockActivity : AppCompatActivity() {
     }
 
     private fun checkPin() {
-    if (prefManager.checkPin(enteredPin)) {
-        grantAccess()
-    } else {
-        onWrongPin()
+        if (prefManager.checkPin(enteredPin)) {
+            grantAccess()
+        } else {
+            onWrongPin()
+        }
     }
-}
 
     private fun grantAccess() {
+        // Set bypass values for the LockService
+        LockService.lastAuthenticatedPackage = packageToUnlock
+        LockService.authTimestamp = System.currentTimeMillis()
 
-    LockService.unlockedApps.add(packageToUnlock)
+        LockService.unlockedApps.add(packageToUnlock)
+        LockService.tempUnlocked.add(packageToUnlock)
+        LockService.appLeftAt.remove(packageToUnlock)
 
-    LockService.tempUnlocked.add(packageToUnlock)
-
-    LockService.appLeftAt.remove(packageToUnlock)
-
-    LockService.pollPausedUntil =
-        System.currentTimeMillis() + 3000
-
-    finish()
-}
+        LockService.pollPausedUntil = System.currentTimeMillis() + 3000
+        finish()
+    }
 
     private fun onWrongPin() {
-        // Shake the dots
         val shake = AnimationUtils.loadAnimation(this, android.R.anim.cycle_interpolator)
         binding.tvPinDots.startAnimation(shake)
-        // Vibrate
         @Suppress("DEPRECATION")
         (getSystemService(VIBRATOR_SERVICE) as? Vibrator)
             ?.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
         Toast.makeText(this, "Wrong PIN", Toast.LENGTH_SHORT).show()
         clearPin()
     }
-
-    // -------------------------------------------------------------------------
-    // Block back/home from revealing the locked app
-    // -------------------------------------------------------------------------
 
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {

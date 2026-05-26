@@ -28,7 +28,6 @@ class PrefManager(context: Context) {
         get() = HashSet(prefs.getStringSet(KEY_LOCKED_APPS, emptySet()) ?: emptySet())
         set(value) { prefs.edit().putStringSet(KEY_LOCKED_APPS, value).apply() }
 
-    // Changed default relock delay from 0L to 5000L (5 seconds)
     var relockDelayMs: Long
         get() = prefs.getLong(KEY_RELOCK_DELAY, 5000L)
         set(value) { prefs.edit().putLong(KEY_RELOCK_DELAY, value).apply() }
@@ -42,6 +41,7 @@ class PrefManager(context: Context) {
         set(value) { prefs.edit().putBoolean(KEY_BATTERY_PROMPT, value).apply() }
 
     fun hasPin() = pin.isNotEmpty()
+    
     fun isLocked(pkg: String) = lockedApps.contains(pkg)
 
     fun toggleApp(pkg: String) {

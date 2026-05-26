@@ -71,6 +71,7 @@ class LockActivity : AppCompatActivity() {
         if (enteredPin.length >= MAX_PIN_LENGTH) return
         enteredPin += digit
         updateDots()
+        
         if (enteredPin.length >= prefManager.pinLength) {
             checkPin()
         }
@@ -96,6 +97,8 @@ class LockActivity : AppCompatActivity() {
     }
 
     private fun checkPin() {
+        if (enteredPin.length < prefManager.pinLength) return
+
         if (prefManager.checkPin(enteredPin)) {
             grantAccess()
         } else {
@@ -104,7 +107,6 @@ class LockActivity : AppCompatActivity() {
     }
 
     private fun grantAccess() {
-        // Set bypass values for the LockService
         LockService.lastAuthenticatedPackage = packageToUnlock
         LockService.authTimestamp = System.currentTimeMillis()
 
@@ -113,15 +115,18 @@ class LockActivity : AppCompatActivity() {
         LockService.appLeftAt.remove(packageToUnlock)
 
         LockService.pollPausedUntil = System.currentTimeMillis() + 3000
+
         finish()
     }
 
     private fun onWrongPin() {
         val shake = AnimationUtils.loadAnimation(this, android.R.anim.cycle_interpolator)
         binding.tvPinDots.startAnimation(shake)
+        
         @Suppress("DEPRECATION")
         (getSystemService(VIBRATOR_SERVICE) as? Vibrator)
             ?.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
+            
         Toast.makeText(this, "Wrong PIN", Toast.LENGTH_SHORT).show()
         clearPin()
     }

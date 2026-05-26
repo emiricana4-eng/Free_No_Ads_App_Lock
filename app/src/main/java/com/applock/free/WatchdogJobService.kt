@@ -16,9 +16,7 @@ class WatchdogJobService : JobService() {
             LockService.start(this)
         }
 
-        // Notify Android that the job completed successfully
         jobFinished(params, false)
-
         return true
     }
 
